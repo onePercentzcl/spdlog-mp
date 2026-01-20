@@ -12,6 +12,7 @@
 #include <spdlog/multiprocess/mode.h>
 #include <chrono>
 #include <memory>
+#include <mutex>
 
 namespace spdlog {
 namespace multiprocess {
