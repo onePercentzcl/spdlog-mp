@@ -112,8 +112,8 @@ Result<void*> SharedMemoryManager::attach_with_version_check(const SharedMemoryH
 
 // 内部映射实现
 Result<void*> SharedMemoryManager::attach_internal(const SharedMemoryHandle& handle, bool check_version) {
-    if (!SharedMemoryManager::validate(handle)) {
-        return Result<void*>::error("Invalid shared memory handle");
+    if (handle.size == 0 || handle.name.empty()) {
+        return Result<void*>::error("Invalid shared memory handle: size or name is invalid");
     }
     
 #ifdef _WIN32
@@ -134,14 +134,37 @@ Result<void*> SharedMemoryManager::attach_internal(const SharedMemoryHandle& han
     
 #else
     // POSIX实现
+    // 优先使用名称重新打开共享内存（跨进程更可靠，特别是fork后）
+    int fd_to_use = handle.fd;
+    bool need_close_fd = false;
+    
+    // 如果fd无效或者我们在子进程中，通过名称重新打开
+    if (fd_to_use < 0 || !handle.name.empty()) {
+        int new_fd = shm_open(handle.name.c_str(), O_RDWR, 0666);
+        if (new_fd >= 0) {
+            fd_to_use = new_fd;
+            need_close_fd = true;  // 我们打开的fd需要关闭
+        } else if (fd_to_use < 0) {
+            // 名称打开失败且原fd也无效
+            return Result<void*>::error(
+                "Failed to open shared memory: " + std::string(std::strerror(errno)));
+        }
+        // 如果名称打开失败但原fd有效，继续使用原fd
+    }
+    
     void* ptr = mmap(
         NULL,
         handle.size,
         PROT_READ | PROT_WRITE,
         MAP_SHARED,
-        handle.fd,
+        fd_to_use,
         0
     );
+    
+    // 如果我们打开了新的fd，现在可以关闭它（mmap后fd可以关闭）
+    if (need_close_fd) {
+        close(fd_to_use);
+    }
     
     if (ptr == MAP_FAILED) {
         return Result<void*>::error(
