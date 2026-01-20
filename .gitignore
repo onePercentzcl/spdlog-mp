@@ -99,3 +99,11 @@ test_results.xml
 # temp files
 filename_*
 *.txt.bak
+
+# Test binaries
+linux-test/test_*
+!linux-test/test_*.cpp
+*.dSYM/
+
+# External repos
+~/xmake-repo

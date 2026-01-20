@@ -93,6 +93,7 @@ int run_consumer() {
     cfg.shm_size = TOTAL_SHM_SIZE;
     cfg.create_shm = false;                                    // 连接已存在的共享内存
     cfg.shm_offset = LOG_OFFSET;                               // 从1MB处开始
+    cfg.enable_onep_format = true;                             // 启用 onepFormat
     cfg.log_file = "logs/offset_demo.txt";
     cfg.slot_size = 4096;
     cfg.poll_interval = std::chrono::milliseconds(10);

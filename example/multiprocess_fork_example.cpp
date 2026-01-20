@@ -134,6 +134,7 @@ int main() {
     cfg.slot_size = 4096;
     cfg.poll_interval = std::chrono::milliseconds(10);
     cfg.poll_duration = std::chrono::milliseconds(100);
+    cfg.enable_onep_format = true;  // 启用 onepFormat
     
     auto consumer = spdlog::EnableConsumer(cfg);
     

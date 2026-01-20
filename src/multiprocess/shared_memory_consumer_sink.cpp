@@ -41,7 +41,8 @@ SharedMemoryConsumerSink::SharedMemoryConsumerSink(
         effective_size, 
         4096,  // 默认槽位大小
         OverflowPolicy::Drop,  // 消费者不关心溢出策略
-        true  // 初始化元数据（消费者负责初始化）
+        true,  // 初始化元数据（消费者负责初始化）
+        static_cast<uint64_t>(config_.poll_duration.count())  // 传递轮询持续时间（毫秒）
     );
 }
 

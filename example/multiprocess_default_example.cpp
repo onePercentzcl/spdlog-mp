@@ -32,7 +32,9 @@ int main() {
     // - 槽位大小: 4096
     // - enable_onep_format: false（默认使用标准格式）
     // EnableConsumer() 会自动启动消费者线程
-    auto consumer = spdlog::EnableConsumer();
+    spdlog::ConsumerConfig cfg;
+    cfg.enable_onep_format = true;  // 启用 onepFormat
+    auto consumer = spdlog::EnableConsumer(cfg);
     
     if (!consumer) {
         std::cerr << "创建消费者失败" << std::endl;

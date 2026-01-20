@@ -46,6 +46,7 @@ int run_consumer() {
     cfg.poll_duration = std::chrono::milliseconds(100);        // 轮询时间
     cfg.overflow_policy = spdlog::OverflowPolicy::Block;       // 阻塞策略
     cfg.async_mode = false;                                    // 同步模式
+    cfg.enable_onep_format = true;                             // 启用 onepFormat
     
     auto consumer = spdlog::EnableConsumer(cfg);
     

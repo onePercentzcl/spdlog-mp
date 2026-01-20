@@ -6,6 +6,8 @@
 #include <spdlog/multiprocess/lock_free_ring_buffer.h>
 #include <spdlog/details/os.h>
 #include <cstring>
+#include <cerrno>
+#include <cstdio>
 #include <thread>
 #include <chrono>
 
@@ -31,8 +33,10 @@ enum class ConsumerState : uint32_t {
 };
 
 LockFreeRingBuffer::LockFreeRingBuffer(void* memory, size_t total_size, size_t slot_size, 
-                                       OverflowPolicy overflow_policy, bool initialize)
-    : metadata_(nullptr), slots_base_(nullptr), slot_count_(0), slot_size_(slot_size), eventfd_(-1) {
+                                       OverflowPolicy overflow_policy, bool initialize,
+                                       uint64_t poll_duration_ms)
+    : metadata_(nullptr), slots_base_(nullptr), slot_count_(0), slot_size_(slot_size), eventfd_(-1),
+      polling_duration_ns_(poll_duration_ms * 1000 * 1000) {  // 转换为纳秒
     // 将共享内存指针转换为元数据指针
     metadata_ = static_cast<Metadata*>(memory);
     
@@ -61,6 +65,11 @@ LockFreeRingBuffer::LockFreeRingBuffer(void* memory, size_t total_size, size_t s
             metadata_->eventfd = eventfd_;
         } else {
             metadata_->eventfd = -1;
+#ifndef NDEBUG
+            // Debug模式：打印警告
+            fprintf(stderr, "[spdlog::multiprocess] WARNING: eventfd creation failed, falling back to polling mode (errno=%d: %s)\n", 
+                    errno, strerror(errno));
+#endif
         }
 #elif defined(__APPLE__) || defined(__FreeBSD__)
         // macOS: 使用kqueue
@@ -69,11 +78,20 @@ LockFreeRingBuffer::LockFreeRingBuffer(void* memory, size_t total_size, size_t s
             metadata_->eventfd = eventfd_;
         } else {
             metadata_->eventfd = -1;
+#ifndef NDEBUG
+            // Debug模式：打印警告
+            fprintf(stderr, "[spdlog::multiprocess] WARNING: kqueue creation failed, falling back to polling mode (errno=%d: %s)\n", 
+                    errno, strerror(errno));
+#endif
         }
 #else
         // 其他平台：不支持通知
         metadata_->eventfd = -1;
         eventfd_ = -1;
+#ifndef NDEBUG
+        // Debug模式：打印警告
+        fprintf(stderr, "[spdlog::multiprocess] WARNING: Event notification not supported on this platform, using polling mode\n");
+#endif
 #endif
         
         // 初始化原子索引为0
@@ -97,6 +115,12 @@ LockFreeRingBuffer::LockFreeRingBuffer(void* memory, size_t total_size, size_t s
     } else {
         // 生产者：从元数据读取eventfd/kqueue
         eventfd_ = metadata_->eventfd;
+#ifndef NDEBUG
+        // Debug模式：如果eventfd不可用，打印警告
+        if (eventfd_ < 0) {
+            fprintf(stderr, "[spdlog::multiprocess] WARNING: Producer using polling mode (eventfd not available, likely non-fork process)\n");
+        }
+#endif
     }
 }
 
@@ -442,14 +466,26 @@ void LockFreeRingBuffer::notify_consumer() {
         uint64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
             now.time_since_epoch()).count();
         
-        if (now_ns - last_poll_time < POLLING_DURATION_NS) {
-            // 还在30秒轮询期内，不需要通知
+        if (now_ns - last_poll_time < polling_duration_ns_) {
+            // 还在轮询期内，不需要通知
+#ifndef NDEBUG
+            fprintf(stderr, "[spdlog::multiprocess] Producer: Consumer in POLLING state, skipping eventfd notification (time remaining: %.1fs)\n",
+                    (polling_duration_ns_ - (now_ns - last_poll_time)) / 1e9);
+#endif
             return;
         }
-        // 超过30秒了，消费者可能已经进入等待状态，继续发送通知
+        // 超过轮询期了，消费者可能已经进入等待状态，继续发送通知
+#ifndef NDEBUG
+        fprintf(stderr, "[spdlog::multiprocess] Producer: POLLING period expired, sending eventfd notification\n");
+#endif
     }
     
     // 消费者在WAITING状态，或者轮询期已过，发送通知
+#ifndef NDEBUG
+    if (state == static_cast<uint32_t>(ConsumerState::WAITING)) {
+        fprintf(stderr, "[spdlog::multiprocess] Producer: Consumer in WAITING state, sending eventfd notification\n");
+    }
+#endif
 #ifdef __linux__
     // Linux: 写入eventfd
     uint64_t value = 1;
@@ -487,6 +523,10 @@ bool LockFreeRingBuffer::wait_for_data(int timeout_ms) {
         metadata_->consumer_state.store(static_cast<uint32_t>(ConsumerState::POLLING), 
                                        std::memory_order_release);
         metadata_->last_poll_time_ns.store(now_ns, std::memory_order_release);
+#ifndef NDEBUG
+        fprintf(stderr, "[spdlog::multiprocess] Consumer: Entering POLLING state (duration: %.1fs)\n",
+                polling_duration_ns_ / 1e9);
+#endif
         return true;
     }
     
@@ -500,17 +540,20 @@ bool LockFreeRingBuffer::wait_for_data(int timeout_ms) {
         uint64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
             now.time_since_epoch()).count();
         
-        if (now_ns - last_poll_time < POLLING_DURATION_NS) {
-            // 还在30秒内，继续轮询
+        if (now_ns - last_poll_time < polling_duration_ns_) {
+            // 还在轮询期内，继续轮询
             if (timeout_ms > 0) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
             }
             return is_next_slot_committed();
         }
         
-        // 超过30秒，切换到等待状态
+        // 超过轮询期，切换到等待状态
         metadata_->consumer_state.store(static_cast<uint32_t>(ConsumerState::WAITING), 
                                        std::memory_order_release);
+#ifndef NDEBUG
+        fprintf(stderr, "[spdlog::multiprocess] Consumer: POLLING period expired, switching to WAITING state\n");
+#endif
     }
     
     // 在WAITING状态，等待通知
@@ -542,6 +585,10 @@ bool LockFreeRingBuffer::wait_for_data(int timeout_ms) {
             metadata_->consumer_state.store(static_cast<uint32_t>(ConsumerState::POLLING), 
                                            std::memory_order_release);
             metadata_->last_poll_time_ns.store(now_ns, std::memory_order_release);
+#ifndef NDEBUG
+            fprintf(stderr, "[spdlog::multiprocess] Consumer: Received eventfd notification, entering POLLING state (duration: %.1fs)\n",
+                    polling_duration_ns_ / 1e9);
+#endif
             return true;
         }
     }
@@ -575,6 +622,10 @@ bool LockFreeRingBuffer::wait_for_data(int timeout_ms) {
             metadata_->consumer_state.store(static_cast<uint32_t>(ConsumerState::POLLING), 
                                            std::memory_order_release);
             metadata_->last_poll_time_ns.store(now_ns, std::memory_order_release);
+#ifndef NDEBUG
+            fprintf(stderr, "[spdlog::multiprocess] Consumer: Received kqueue notification, entering POLLING state (duration: %.1fs)\n",
+                    polling_duration_ns_ / 1e9);
+#endif
             return true;
         }
     }

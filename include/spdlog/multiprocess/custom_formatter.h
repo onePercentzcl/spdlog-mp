@@ -603,6 +603,7 @@ inline std::shared_ptr<multiprocess::SharedMemoryConsumerSink> EnableConsumer(
     // 创建消费者配置
     multiprocess::ConsumerConfig consumer_cfg;
     consumer_cfg.poll_interval = config.poll_interval;
+    consumer_cfg.poll_duration = config.poll_duration;
     consumer_cfg.destroy_on_exit = destroy_on_exit;
     consumer_cfg.enable_onep_format = config.enable_onep_format;
     

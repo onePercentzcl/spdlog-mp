@@ -155,8 +155,13 @@ int main() {
 | 日志名称 | `app` |
 | 日志文件 | `logs/YYYYMMDD_HHMMSS_app.log` |
 | 日志轮转 | 启用，单文件10MB，最多5个 |
-| 轮询间隔 | 10ms |
+| 轮询间隔 (poll_interval) | 10ms |
+| 轮询持续时间 (poll_duration) | 1000ms (1秒) |
 | 槽位大小 | 4096字节 |
+
+**性能优化说明：**
+- `poll_interval`: 消费者线程检查新消息的间隔
+- `poll_duration`: POLLING 状态持续时间。消费者收到消息后进入 POLLING 状态，在此期间生产者跳过 eventfd/kqueue 通知，减少系统调用开销
 
 ## API 参考
 
@@ -173,6 +178,8 @@ spdlog::ConsumerConfig cfg;
 cfg.shm_name = "/my_shm";
 cfg.log_name = "myapp";
 cfg.max_file_size = 20 * 1024 * 1024;  // 20MB
+cfg.poll_duration = std::chrono::milliseconds(2000);  // POLLING 状态持续 2 秒
+cfg.poll_interval = std::chrono::milliseconds(10);    // 轮询间隔 10ms
 spdlog::EnableConsumer(cfg);
 ```
 

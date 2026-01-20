@@ -20,10 +20,11 @@ namespace multiprocess {
 
 // 消费者配置
 struct ConsumerConfig {
-    std::chrono::milliseconds poll_interval{10};  // 轮询间隔
-    bool blocking_mode = false;                   // 阻塞模式
-    bool destroy_on_exit = true;                  // 退出时是否销毁共享内存
-    bool enable_onep_format = false;              // 是否启用OnePet格式（默认false，使用标准格式）
+    std::chrono::milliseconds poll_interval{10};   // 轮询间隔
+    std::chrono::milliseconds poll_duration{1000}; // 轮询持续时间（POLLING状态持续时间）
+    bool blocking_mode = false;                    // 阻塞模式
+    bool destroy_on_exit = true;                   // 退出时是否销毁共享内存
+    bool enable_onep_format = false;               // 是否启用OnePet格式（默认false，使用标准格式）
 };
 
 // 消费者Sink - 用于主进程从共享内存读取日志并输出到配置的sink

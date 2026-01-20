@@ -23,8 +23,10 @@ public:
     // @param slot_size: 每个槽位的大小
     // @param overflow_policy: 溢出策略（阻塞/丢弃）
     // @param initialize: 是否初始化元数据（消费者为true，生产者为false）
+    // @param poll_duration_ms: 轮询持续时间（毫秒），默认1000ms
     LockFreeRingBuffer(void* memory, size_t total_size, size_t slot_size, 
-                       OverflowPolicy overflow_policy, bool initialize = true);
+                       OverflowPolicy overflow_policy, bool initialize = true,
+                       uint64_t poll_duration_ms = 1000);
     
     // 生产者：预留一个槽位
     // @return: 成功返回槽位索引，失败返回错误码
@@ -147,8 +149,8 @@ private:
     size_t slot_size_;
     int eventfd_;  // 本地eventfd/kqueue副本（用于快速访问）
     
-    // 轮询持续时间（30秒）
-    static constexpr uint64_t POLLING_DURATION_NS = 30ULL * 1000 * 1000 * 1000;  // 30秒
+    // 轮询持续时间（纳秒），从 ConsumerConfig.poll_duration 传入
+    uint64_t polling_duration_ns_;
 };
 
 } // namespace spdlog
