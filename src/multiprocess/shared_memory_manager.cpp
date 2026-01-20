@@ -135,16 +135,15 @@ Result<void*> SharedMemoryManager::attach_internal(const SharedMemoryHandle& han
 #else
     // POSIX实现
     // 总是通过名称重新打开共享内存（跨进程更可靠，特别是fork后）
-    // 这样可以避免依赖可能无效的继承fd
     int fd_to_use = shm_open(handle.name.c_str(), O_RDWR, 0666);
+    int shm_open_errno = errno;
+    
     if (fd_to_use < 0) {
-        // 名称打开失败，尝试使用原fd作为后备
-        if (handle.fd >= 0) {
-            fd_to_use = handle.fd;
-        } else {
-            return Result<void*>::error(
-                "Failed to open shared memory '" + handle.name + "': " + std::string(std::strerror(errno)));
-        }
+        // shm_open 失败，返回详细错误（不再回退到可能无效的fd）
+        return Result<void*>::error(
+            "Failed to open shared memory '" + handle.name + "': " + 
+            std::string(std::strerror(shm_open_errno)) + 
+            " (original fd=" + std::to_string(handle.fd) + ")");
     }
     
     void* ptr = mmap(
@@ -158,11 +157,8 @@ Result<void*> SharedMemoryManager::attach_internal(const SharedMemoryHandle& han
     
     int mmap_errno = errno;
     
-    // 如果我们通过shm_open打开了新的fd，现在可以关闭它（mmap后fd可以关闭）
-    // 注意：只关闭我们新打开的fd，不关闭传入的handle.fd
-    if (fd_to_use != handle.fd) {
-        close(fd_to_use);
-    }
+    // 关闭我们打开的fd（mmap后fd可以关闭）
+    close(fd_to_use);
     
     if (ptr == MAP_FAILED) {
         return Result<void*>::error(
