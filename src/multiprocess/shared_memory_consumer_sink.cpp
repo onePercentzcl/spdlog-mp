@@ -238,14 +238,15 @@ void SharedMemoryConsumerSink::process_message(const void* data, size_t size) {
         // 文件格式：始终包含PID和线程ID（无颜色）
         std::string file_logger_name = process_name + ":" + pid_str + "] [" + module_name + ":" + tid_str;
         
-        // 控制台格式：根据Debug/Release模式决定（带颜色）
-#ifdef NDEBUG
-        // Release模式：不显示PID和线程ID
-        std::string console_logger_name = console_process_name + "] [" + console_module_name;
-#else
-        // Debug模式：显示PID和线程ID
-        std::string console_logger_name = console_process_name + ":" + pid_str + "] [" + console_module_name + ":" + tid_str;
-#endif
+        // 控制台格式：根据配置决定（带颜色）
+        std::string console_logger_name;
+        if (config_.debug_format) {
+            // Debug格式：显示PID和线程ID
+            console_logger_name = console_process_name + ":" + pid_str + "] [" + console_module_name + ":" + tid_str;
+        } else {
+            // Release格式：不显示PID和线程ID
+            console_logger_name = console_process_name + "] [" + console_module_name;
+        }
         
         // 输出到所有配置的sink
         for (size_t i = 0; i < output_sinks_.size(); ++i) {

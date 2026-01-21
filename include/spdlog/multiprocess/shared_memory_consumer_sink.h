@@ -25,6 +25,7 @@ struct ConsumerConfig {
     bool blocking_mode = false;                    // 阻塞模式
     bool destroy_on_exit = true;                   // 退出时是否销毁共享内存
     bool enable_onep_format = false;               // 是否启用OnePet格式（默认false，使用标准格式）
+    bool debug_format = false;                     // 是否使用Debug格式（显示PID和ThreadID）
 };
 
 // 消费者Sink - 用于主进程从共享内存读取日志并输出到配置的sink
