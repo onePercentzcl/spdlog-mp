@@ -240,7 +240,13 @@ inline std::shared_ptr<sinks::stdout_color_sink_mt> CreateConsumerConsoleSink() 
     sink->set_color(level::critical, "\033[1;95m");
     auto fmt = std::make_unique<pattern_formatter>();
     fmt->add_flag<LevelFormatterColored>('*');
+#ifdef NDEBUG
+    // Release 模式：简洁格式，不显示毫秒
     fmt->set_pattern("[%H:%M:%S] [%*] [%n] %v");
+#else
+    // Debug 模式：详细格式，显示毫秒
+    fmt->set_pattern("[%H:%M:%S.%e] [%*] [%n] %v");
+#endif
     sink->set_formatter(std::move(fmt));
     sink->set_level(level::trace);
     return sink;
