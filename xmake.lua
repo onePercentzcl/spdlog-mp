@@ -10,6 +10,14 @@ set_defaultmode("release")
 -- 设置C++标准
 set_languages("cxx17")
 
+-- 配置编译模式
+add_rules("mode.debug", "mode.release")
+
+-- 确保 release 模式定义 NDEBUG
+if is_mode("release") then
+    add_defines("NDEBUG")
+end
+
 -- 配置选项
 option("build_shared")
     set_default(false)
