@@ -33,7 +33,9 @@ SharedMemoryConsumerSink::SharedMemoryConsumerSink(
     
     // 计算实际使用的内存区域（应用偏移量）
     void* effective_ptr = static_cast<char*>(shm_ptr_) + offset_;
-    size_t effective_size = handle_.size - offset_;
+    
+    // 计算日志缓存区大小：如果配置了 log_shm_size 则使用，否则使用 handle_.size - offset_
+    size_t effective_size = (config_.log_shm_size > 0) ? config_.log_shm_size : (handle_.size - offset_);
     
     // 处理通知模式配置
     NotifyMode effective_notify_mode = config_.notify_mode;

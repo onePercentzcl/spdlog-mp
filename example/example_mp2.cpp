@@ -7,7 +7,7 @@
  * 
  * 演示功能：
  * - 主进程创建共享内存和 EventFD
- * - 8MB 共享内存，偏移 4MB，日志缓存区 4MB
+ * - 8MB 共享内存，偏移 4MB，日志缓存区 1MB（4MB-5MB）
  * - 槽位大小 1024 字节
  * - EventFD 通知模式（macOS 自动回退到 UDS）
  * - 启用 OnePet 格式
@@ -355,8 +355,9 @@ int main() {
     
     // ========== 原始方式创建共享内存 ==========
     const char* shm_name = "/example_mp2_shm";
-    const size_t shm_size = 8 * 1024 * 1024;  // 8MB
+    const size_t shm_size = 8 * 1024 * 1024;  // 8MB 共享内存总大小
     const size_t shm_offset = 4 * 1024 * 1024; // 偏移 4MB
+    const size_t log_shm_size = 1 * 1024 * 1024; // 日志缓存区 1MB（4MB-5MB）
     
     // 先删除可能存在的旧共享内存
     shm_unlink(shm_name);
@@ -406,7 +407,7 @@ int main() {
     
     // 共享内存配置 - 使用已创建的共享内存
     cfg.shm_name = shm_name;
-    cfg.shm_size = shm_size;
+    cfg.shm_size = log_shm_size;         // 日志缓存区大小 1MB
     cfg.create_shm = false;              // 不创建，使用已存在的
     cfg.shm_offset = shm_offset;         // 偏移 4MB
     
@@ -447,7 +448,7 @@ int main() {
     
     spdlog::info("=== 主进程启动 (PID: {}) ===", getpid());
     spdlog::info("共享内存: {} ({}MB)", shm_name, shm_size / (1024 * 1024));
-    spdlog::info("日志缓存区偏移: {}MB", shm_offset / (1024 * 1024));
+    spdlog::info("日志缓存区: {}MB (偏移 {}MB)", log_shm_size / (1024 * 1024), shm_offset / (1024 * 1024));
     spdlog::info("槽位大小: 1024 字节");
     spdlog::info("通知模式: EventFD (macOS 自动回退 UDS)");
     spdlog::info("日志目录: {}", log_dir);

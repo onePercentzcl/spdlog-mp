@@ -442,9 +442,10 @@ inline void EnableOnepFormat(
 struct ConsumerConfig {
     // ========== 共享内存配置 ==========
     std::string shm_name = "/spdlog_default_shm";   // 共享内存名称（默认值）
-    size_t shm_size = 4 * 1024 * 1024;              // 共享内存大小（默认4MB）
+    size_t shm_size = 4 * 1024 * 1024;              // 日志缓存区大小（默认4MB）
     bool create_shm = true;                         // true=创建新的共享内存，false=连接已存在的
     size_t shm_offset = 0;                          // 共享内存偏移量（⚠️ 仅当 create_shm=false 时有效）
+    size_t log_shm_size = 0;                        // 日志缓存区大小（0=自动计算为 shm_size - shm_offset）
     
     // ========== 日志输出配置 ==========
     std::string log_dir = "logs/";                  // 日志目录（默认 "logs/"）
@@ -580,7 +581,9 @@ inline std::shared_ptr<multiprocess::SharedMemoryConsumerSink> EnableConsumer(
             return nullptr;
         }
         state.shm_handle.name = config.shm_name;
-        state.shm_handle.size = config.shm_size;
+        // shm_size 是日志缓存区大小，加上偏移量得到 SharedMemoryConsumerSink 需要的 handle.size
+        // 这样 SharedMemoryConsumerSink 计算 effective_size = handle_.size - offset_ 时能得到正确的日志缓存区大小
+        state.shm_handle.size = config.shm_offset + config.shm_size;
         state.shm_handle.fd = fd;
     }
     
@@ -624,6 +627,7 @@ inline std::shared_ptr<multiprocess::SharedMemoryConsumerSink> EnableConsumer(
     consumer_cfg.destroy_on_exit = destroy_on_exit;
     consumer_cfg.enable_onep_format = config.enable_onep_format;
     consumer_cfg.slot_size = config.slot_size;  // 传递槽位大小
+    consumer_cfg.log_shm_size = config.log_shm_size;  // 传递日志缓存区大小
 #ifdef NDEBUG
     consumer_cfg.debug_format = false;  // Release 模式：不显示 PID 和 ThreadID
 #else

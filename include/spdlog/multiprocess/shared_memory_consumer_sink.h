@@ -27,6 +27,7 @@ struct ConsumerConfig {
     bool enable_onep_format = false;               // 是否启用OnePet格式（默认false，使用标准格式）
     bool debug_format = false;                     // 是否使用Debug格式（显示PID和ThreadID）
     size_t slot_size = 4096;                       // 槽位大小（字节）
+    size_t log_shm_size = 0;                       // 日志缓存区大小（0=自动计算）
     
     // 通知模式配置
     NotifyMode notify_mode = NotifyMode::UDS;      // 通知模式（默认 UDS）
