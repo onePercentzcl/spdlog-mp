@@ -105,6 +105,11 @@ struct ConsumerConfig {
     std::chrono::milliseconds poll_interval{10};    // 轮询间隔
     std::chrono::milliseconds poll_duration{1000};  // 轮询持续时间
     
+    // ========== 通知模式配置 ==========
+    NotifyMode notify_mode = NotifyMode::UDS;       // 通知模式（默认 UDS）
+    std::string uds_path;                           // UDS 路径（空则自动生成）
+    int eventfd = -1;                               // eventfd 文件描述符（仅 Linux EventFD 模式）
+    
     // ========== 模式配置 ==========
     bool async_mode = false;                        // 是否启用异步模式
     bool enable_onep_format = false;                // 是否启用OnePet格式（默认false使用标准格式）
@@ -156,6 +161,11 @@ struct ProducerConfig {
     OverflowPolicy overflow_policy = OverflowPolicy::Block;  // Block=阻塞等待，Drop=丢弃
     std::chrono::milliseconds block_timeout{5000};           // 阻塞超时（⚠️ 仅 overflow_policy=Block 时有效）
     
+    // ========== 通知模式配置 ==========
+    NotifyMode notify_mode = NotifyMode::UDS;       // 通知模式（默认 UDS）
+    std::string uds_path;                           // UDS 路径（空则自动生成）
+    int eventfd = -1;                               // eventfd 文件描述符（仅 Linux EventFD 模式）
+    
     // ========== 模式配置 ==========
     bool async_mode = false;                        // 是否启用异步模式
     bool enable_onep_format = false;                // 是否启用OnePet格式
@@ -170,6 +180,56 @@ struct ProducerConfig {
 | `shm_name` | 与 `shm_handle` 互斥，独立进程场景使用 |
 | `shm_size` | 仅当使用 `shm_name`（独立进程场景）时有效 |
 | `block_timeout` | 仅当 `overflow_policy=Block` 时有效 |
+| `uds_path` | 仅当 `notify_mode=UDS` 时有效 |
+| `eventfd` | 仅当 `notify_mode=EventFD` 时有效（仅 Linux） |
+
+## 通知模式
+
+### NotifyMode 枚举
+
+```cpp
+enum class NotifyMode {
+    UDS,      // Unix Domain Socket（默认，跨平台）
+    EventFD   // eventfd（仅 Linux）
+};
+```
+
+### UDS 模式（默认）
+
+- 跨平台支持 (macOS/Linux)
+- 自动生成 socket 路径：`/tmp/spdlog_mp_{shm_name}.sock`
+- 支持自定义路径
+
+```cpp
+spdlog::ConsumerConfig cfg;
+cfg.notify_mode = spdlog::NotifyMode::UDS;
+cfg.uds_path = "/tmp/my_custom.sock";  // 可选，不设置则自动生成
+```
+
+### EventFD 模式（仅 Linux）
+
+- 仅 Linux 平台支持
+- 适用于 fork 场景，子进程可继承 eventfd
+- 性能更高
+
+```cpp
+// Linux fork 场景
+spdlog::ConsumerConfig cfg;
+cfg.notify_mode = spdlog::NotifyMode::EventFD;
+spdlog::EnableConsumer(cfg);
+
+// fork 后子进程自动继承 eventfd
+if (fork() == 0) {
+    spdlog::EnableProducer(spdlog::ProducerConfig(spdlog::GetSharedMemoryHandle()));
+}
+```
+
+### 平台兼容性
+
+| 平台 | UDS | EventFD |
+|------|-----|---------|
+| Linux | ✅ | ✅ |
+| macOS | ✅ | ❌ (自动回退到 UDS) |
 
 ### 其他API
 

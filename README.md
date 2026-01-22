@@ -2,7 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://isocpp.org/std/the-standard)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)]()
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)]()
+[![Version](https://img.shields.io/badge/version-1.0.6-blue.svg)]()
 
 基于 [spdlog](https://github.com/gabime/spdlog) 的多进程共享内存日志扩展。
 
@@ -158,6 +159,11 @@ int main() {
 | 轮询间隔 (poll_interval) | 10ms |
 | 轮询持续时间 (poll_duration) | 1000ms (1秒) |
 | 槽位大小 | 4096字节 |
+| 通知模式 (notify_mode) | UDS (Unix Domain Socket) |
+
+**通知模式说明：**
+- `UDS` (默认): Unix Domain Socket，跨平台支持 (macOS/Linux)
+- `EventFD`: Linux 专用，适用于 fork 场景，性能更高
 
 **性能优化说明：**
 - `poll_interval`: 消费者线程检查新消息的间隔
@@ -180,6 +186,7 @@ cfg.log_name = "myapp";
 cfg.max_file_size = 20 * 1024 * 1024;  // 20MB
 cfg.poll_duration = std::chrono::milliseconds(2000);  // POLLING 状态持续 2 秒
 cfg.poll_interval = std::chrono::milliseconds(10);    // 轮询间隔 10ms
+cfg.notify_mode = spdlog::NotifyMode::UDS;            // 通知模式（默认 UDS）
 spdlog::EnableConsumer(cfg);
 ```
 

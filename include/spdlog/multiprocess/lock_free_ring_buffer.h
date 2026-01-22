@@ -24,9 +24,17 @@ public:
     // @param overflow_policy: 溢出策略（阻塞/丢弃）
     // @param initialize: 是否初始化元数据（消费者为true，生产者为false）
     // @param poll_duration_ms: 轮询持续时间（毫秒），默认1000ms
+    // @param notify_mode: 通知模式（UDS 或 EventFD），默认 UDS（跨平台兼容）
+    // @param uds_path: UDS 路径（仅 UDS 模式有效）
     LockFreeRingBuffer(void* memory, size_t total_size, size_t slot_size, 
                        OverflowPolicy overflow_policy, bool initialize = true,
-                       uint64_t poll_duration_ms = 1000);
+                       uint64_t poll_duration_ms = 1000,
+                       NotifyMode notify_mode = NotifyMode::UDS,
+                       const std::string& uds_path = "");
+    
+    // 析构函数
+    // 清理 UDS socket 和 eventfd 资源
+    ~LockFreeRingBuffer();
     
     // 生产者：预留一个槽位
     // @return: 成功返回槽位索引，失败返回错误码
@@ -122,7 +130,9 @@ private:
         uint32_t capacity;                   // 槽位数量
         uint32_t slot_size;                  // 槽位大小
         OverflowPolicy overflow_policy;      // 溢出策略
-        int eventfd;                         // eventfd文件描述符（Linux）或kqueue fd（macOS）
+        NotifyMode notify_mode;              // 通知模式（UDS 或 EventFD）
+        int notify_fd;                       // 通知文件描述符（eventfd/kqueue 或 UDS socket）
+        char uds_path[108];                  // UDS 路径（sockaddr_un.sun_path 最大长度）
         
         // 使用alignas(CACHE_LINE_SIZE)确保每个原子变量独占一个缓存行，避免伪共享
         // 写入索引：主要由生产者写入
@@ -143,11 +153,35 @@ private:
         return reinterpret_cast<Slot*>(static_cast<char*>(slots_base_) + index * slot_size_);
     }
     
+    // UDS 通知机制方法
+    // 初始化 UDS 服务端（消费者调用）
+    // @param path: UDS socket 路径
+    // @return: 成功返回 true，失败返回 false
+    bool init_uds_server(const std::string& path);
+    
+    // 连接 UDS 服务端（生产者调用）
+    // @param path: UDS socket 路径
+    // @return: 成功返回 true，失败返回 false
+    bool connect_uds_server(const std::string& path);
+    
+    // 通过 UDS 发送通知
+    void notify_via_uds();
+    
+    // 通过 UDS 等待通知
+    // @param timeout_ms: 超时时间（毫秒）
+    // @return: 收到通知返回 true，超时返回 false
+    bool wait_via_uds(int timeout_ms);
+    
     Metadata* metadata_;
     void* slots_base_;
     size_t slot_count_;
     size_t slot_size_;
-    int eventfd_;  // 本地eventfd/kqueue副本（用于快速访问）
+    int notify_fd_;  // 本地通知fd副本（eventfd/kqueue 或 UDS socket）
+    int uds_server_fd_;  // UDS 服务端 socket（消费者端）
+    int uds_client_fd_;  // UDS 客户端 socket（生产者端）
+    bool is_consumer_;   // 是否是消费者（用于析构时清理）
+    std::string uds_path_;  // UDS 路径（用于析构时删除 socket 文件）
+    NotifyMode notify_mode_;  // 本地通知模式副本（用于析构时清理）
     
     // 轮询持续时间（纳秒），从 ConsumerConfig.poll_duration 传入
     uint64_t polling_duration_ns_;

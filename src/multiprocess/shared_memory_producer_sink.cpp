@@ -39,13 +39,24 @@ SharedMemoryProducerSink<Mutex>::SharedMemoryProducerSink(
     void* effective_ptr = static_cast<char*>(shm_ptr_) + offset_;
     size_t effective_size = handle_.size - offset_;
     
+    // 处理通知模式配置
+    // 生产者从共享内存元数据读取通知模式（消费者已初始化）
+    // 但如果用户显式指定了 EventFD 模式，需要处理 macOS 回退
+#ifdef __APPLE__
+    if (config_.notify_mode == NotifyMode::EventFD) {
+        fprintf(stderr, "[spdlog::multiprocess] Warning: EventFD not supported on macOS, falling back to UDS\n");
+        // 注意：实际的通知模式由消费者决定，这里只是警告
+    }
+#endif
+    
     // 创建环形缓冲区（不初始化，因为消费者已经初始化过了）
+    // 生产者会从共享内存元数据读取通知模式和 UDS 路径
     ring_buffer_ = spdlog::details::make_unique<LockFreeRingBuffer>(
         effective_ptr, 
         effective_size, 
         config_.slot_size, 
         config_.overflow_policy,
-        false  // 不初始化元数据
+        false  // 不初始化元数据（生产者从元数据读取配置）
     );
 }
 

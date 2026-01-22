@@ -129,7 +129,7 @@ int main() {
     // ========================================
     spdlog::ConsumerConfig cfg;
     cfg.shm_name = SHM_NAME;
-    cfg.log_file = "logs/multiprocess_fork_demo.txt";
+    //cfg.log_file = "logs/multiprocess_fork_demo.txt";
     cfg.create_shm = true;
     cfg.slot_size = 4096;
     cfg.poll_interval = std::chrono::milliseconds(10);
@@ -193,7 +193,7 @@ int main() {
     spdlog::Shutdown();
     
     std::cout << std::endl << "=== 完成 ===" << std::endl;
-    std::cout << "日志已保存到: logs/multiprocess_fork_demo.txt" << std::endl;
+    //std::cout << "日志已保存到: logs/multiprocess_fork_demo.txt" << std::endl;
     
     return 0;
 }

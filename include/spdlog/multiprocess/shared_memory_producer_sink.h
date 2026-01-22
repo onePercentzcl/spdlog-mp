@@ -24,6 +24,11 @@ struct ProducerConfig {
     std::chrono::milliseconds block_timeout{1000};              // 阻塞超时
     bool enable_fallback = false;                               // 是否启用回退机制
     spdlog::sink_ptr fallback_sink = nullptr;                   // 回退sink（共享内存不可用时使用）
+    
+    // 通知模式配置
+    NotifyMode notify_mode = NotifyMode::UDS;                   // 通知模式（默认 UDS）
+    std::string uds_path;                                       // UDS 路径（空则从共享内存元数据读取）
+    int eventfd = -1;                                           // eventfd 文件描述符（可选，仅 EventFD 模式）
 };
 
 // 生产者Sink - 用于子进程写入日志到共享内存

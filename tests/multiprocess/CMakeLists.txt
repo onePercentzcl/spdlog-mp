@@ -37,6 +37,7 @@ set(MULTIPROCESS_TEST_SOURCES
     test_backward_compatibility.cpp
     test_performance.cpp
     test_integration.cpp
+    test_notify_mode_config.cpp
 )
 
 # Create test executable

@@ -26,6 +26,11 @@ struct ConsumerConfig {
     bool destroy_on_exit = true;                   // 退出时是否销毁共享内存
     bool enable_onep_format = false;               // 是否启用OnePet格式（默认false，使用标准格式）
     bool debug_format = false;                     // 是否使用Debug格式（显示PID和ThreadID）
+    
+    // 通知模式配置
+    NotifyMode notify_mode = NotifyMode::UDS;      // 通知模式（默认 UDS）
+    std::string uds_path;                          // UDS 路径（空则自动生成）
+    int eventfd = -1;                              // eventfd 文件描述符（可选，仅 EventFD 模式）
 };
 
 // 消费者Sink - 用于主进程从共享内存读取日志并输出到配置的sink

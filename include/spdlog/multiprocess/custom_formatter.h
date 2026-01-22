@@ -471,6 +471,11 @@ struct ConsumerConfig {
     bool async_mode = false;                        // 是否使用异步模式
     bool enable_onep_format = false;                // 是否启用OnePet格式（默认false，使用标准格式）
     
+    // ========== 通知模式配置 ==========
+    NotifyMode notify_mode = NotifyMode::UDS;       // 通知模式（默认 UDS）
+    std::string uds_path;                           // UDS 路径（空则自动生成）
+    int eventfd = -1;                               // eventfd 文件描述符（可选，仅 EventFD 模式）
+    
     // 便捷构造函数
     ConsumerConfig() = default;
     explicit ConsumerConfig(const std::string& name) : shm_name(name) {}
@@ -503,6 +508,11 @@ struct ProducerConfig {
     // ========== 模式配置 ==========
     bool async_mode = false;                        // 是否使用异步模式
     bool enable_onep_format = false;                // 是否启用OnePet格式（默认false，使用标准格式）
+    
+    // ========== 通知模式配置 ==========
+    NotifyMode notify_mode = NotifyMode::UDS;       // 通知模式（默认 UDS）
+    std::string uds_path;                           // UDS 路径（空则自动生成）
+    int eventfd = -1;                               // eventfd 文件描述符（可选，仅 EventFD 模式）
     
     // 便捷构造函数
     ProducerConfig() = default;
@@ -618,6 +628,11 @@ inline std::shared_ptr<multiprocess::SharedMemoryConsumerSink> EnableConsumer(
     consumer_cfg.debug_format = true;   // Debug 模式：显示 PID 和 ThreadID
 #endif
     
+    // 传递通知模式配置
+    consumer_cfg.notify_mode = config.notify_mode;
+    consumer_cfg.uds_path = config.uds_path;
+    consumer_cfg.eventfd = config.eventfd;
+    
     try {
         state.consumer_sink = std::make_shared<multiprocess::SharedMemoryConsumerSink>(
             state.shm_handle, output_sinks, consumer_cfg, effective_offset);
@@ -710,6 +725,13 @@ inline bool EnableProducer(const ProducerConfig& config = ProducerConfig()) {
     prod_cfg.slot_size = config.slot_size;
     prod_cfg.overflow_policy = config.overflow_policy;
     prod_cfg.block_timeout = config.block_timeout;
+    
+    // 传递通知模式配置
+    // 注意：生产者实际上从共享内存元数据读取通知模式
+    // 这里的配置主要用于 EventFD 模式下传递 eventfd 文件描述符
+    prod_cfg.notify_mode = config.notify_mode;
+    prod_cfg.uds_path = config.uds_path;
+    prod_cfg.eventfd = config.eventfd;
     
     auto producer_sink = std::make_shared<multiprocess::shared_memory_producer_sink_mt>(
         state.shm_handle, prod_cfg, config.shm_offset);

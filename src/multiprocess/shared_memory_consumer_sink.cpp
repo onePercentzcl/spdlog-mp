@@ -35,6 +35,23 @@ SharedMemoryConsumerSink::SharedMemoryConsumerSink(
     void* effective_ptr = static_cast<char*>(shm_ptr_) + offset_;
     size_t effective_size = handle_.size - offset_;
     
+    // 处理通知模式配置
+    NotifyMode effective_notify_mode = config_.notify_mode;
+    std::string effective_uds_path = config_.uds_path;
+    
+#ifdef __APPLE__
+    // macOS 上 EventFD 不可用，自动回退到 UDS
+    if (effective_notify_mode == NotifyMode::EventFD) {
+        fprintf(stderr, "[spdlog::multiprocess] Warning: EventFD not supported on macOS, falling back to UDS\n");
+        effective_notify_mode = NotifyMode::UDS;
+    }
+#endif
+    
+    // 如果使用 UDS 模式且未指定路径，自动生成默认路径
+    if (effective_notify_mode == NotifyMode::UDS && effective_uds_path.empty()) {
+        effective_uds_path = generate_default_uds_path(handle_.name);
+    }
+    
     // 创建环形缓冲区（消费者应该初始化共享内存）
     ring_buffer_ = spdlog::details::make_unique<LockFreeRingBuffer>(
         effective_ptr, 
@@ -42,7 +59,9 @@ SharedMemoryConsumerSink::SharedMemoryConsumerSink(
         4096,  // 默认槽位大小
         OverflowPolicy::Drop,  // 消费者不关心溢出策略
         true,  // 初始化元数据（消费者负责初始化）
-        static_cast<uint64_t>(config_.poll_duration.count())  // 传递轮询持续时间（毫秒）
+        static_cast<uint64_t>(config_.poll_duration.count()),  // 传递轮询持续时间（毫秒）
+        effective_notify_mode,  // 通知模式
+        effective_uds_path      // UDS 路径
     );
 }
 

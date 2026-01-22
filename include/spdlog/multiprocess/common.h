@@ -21,6 +21,25 @@ enum class OverflowPolicy {
     Drop    // 丢弃新消息
 };
 
+// 通知模式
+enum class NotifyMode {
+    UDS,      // Unix Domain Socket（默认，跨平台）
+    EventFD   // eventfd（仅 Linux）
+};
+
+// 生成默认 UDS 路径
+// @param shm_name: 共享内存名称
+// @return: 格式为 "/tmp/spdlog_mp_{normalized_name}.sock" 的路径
+//          其中 normalized_name 是移除开头 '/' 后的 shm_name
+inline std::string generate_default_uds_path(const std::string& shm_name) {
+    std::string name = shm_name;
+    // 移除开头的 '/'
+    if (!name.empty() && name[0] == '/') {
+        name = name.substr(1);
+    }
+    return "/tmp/spdlog_mp_" + name + ".sock";
+}
+
 // 共享内存标识符
 struct SharedMemoryHandle {
     int fd;                    // POSIX文件描述符 (Linux/macOS)

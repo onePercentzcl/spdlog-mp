@@ -14,13 +14,18 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 #include <poll.h>
-#elif defined(__APPLE__) || defined(__FreeBSD__)
-// macOS: use kqueue for notification
-#include <sys/types.h>
-#include <sys/event.h>
-#include <sys/time.h>
+#else
+// 非 Linux 平台（macOS/FreeBSD 等）：仅使用 UDS 模式
+// 不需要 eventfd 或 kqueue 相关头文件
 #include <unistd.h>
 #endif
+
+// UDS (Unix Domain Socket) includes
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <errno.h>
 
 namespace spdlog {
 
@@ -32,8 +37,12 @@ enum class ConsumerState : uint32_t {
 
 LockFreeRingBuffer::LockFreeRingBuffer(void* memory, size_t total_size, size_t slot_size, 
                                        OverflowPolicy overflow_policy, bool initialize,
-                                       uint64_t poll_duration_ms)
-    : metadata_(nullptr), slots_base_(nullptr), slot_count_(0), slot_size_(slot_size), eventfd_(-1),
+                                       uint64_t poll_duration_ms,
+                                       NotifyMode notify_mode,
+                                       const std::string& uds_path)
+    : metadata_(nullptr), slots_base_(nullptr), slot_count_(0), slot_size_(slot_size), notify_fd_(-1),
+      uds_server_fd_(-1), uds_client_fd_(-1), is_consumer_(initialize), uds_path_(),
+      notify_mode_(notify_mode),  // 保存通知模式副本
       polling_duration_ns_(poll_duration_ms * 1000 * 1000) {  // 转换为纳秒
     // 将共享内存指针转换为元数据指针
     metadata_ = static_cast<Metadata*>(memory);
@@ -55,28 +64,45 @@ LockFreeRingBuffer::LockFreeRingBuffer(void* memory, size_t total_size, size_t s
         metadata_->slot_size = static_cast<uint32_t>(slot_size_);
         metadata_->overflow_policy = overflow_policy;
         
-        // 创建通知机制
+        // 初始化通知模式
+        metadata_->notify_mode = notify_mode;
+        
+        // 初始化 UDS 路径
+        std::memset(metadata_->uds_path, 0, sizeof(metadata_->uds_path));
+        if (!uds_path.empty() && uds_path.size() < sizeof(metadata_->uds_path)) {
+            std::memcpy(metadata_->uds_path, uds_path.c_str(), uds_path.size());
+        }
+        
+        // 根据通知模式创建通知机制
+        if (notify_mode == NotifyMode::UDS) {
+            // UDS 模式：初始化 UDS 服务端
+            if (init_uds_server(uds_path)) {
+                notify_fd_ = uds_server_fd_;
+                metadata_->notify_fd = uds_server_fd_;
+            } else {
+                notify_fd_ = -1;
+                metadata_->notify_fd = -1;
+            }
+        } else {
+            // EventFD 模式
 #ifdef __linux__
-        // Linux: 使用eventfd
-        eventfd_ = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE);
-        if (eventfd_ >= 0) {
-            metadata_->eventfd = eventfd_;
-        } else {
-            metadata_->eventfd = -1;
-        }
-#elif defined(__APPLE__) || defined(__FreeBSD__)
-        // macOS: 使用kqueue
-        eventfd_ = kqueue();
-        if (eventfd_ >= 0) {
-            metadata_->eventfd = eventfd_;
-        } else {
-            metadata_->eventfd = -1;
-        }
+            // Linux: 使用eventfd
+            notify_fd_ = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE);
+            if (notify_fd_ >= 0) {
+                metadata_->notify_fd = notify_fd_;
+            } else {
+                metadata_->notify_fd = -1;
+            }
 #else
-        // 其他平台：不支持通知
-        metadata_->eventfd = -1;
-        eventfd_ = -1;
+            // 非 Linux 平台（macOS/FreeBSD 等）：EventFD 不可用
+            // 注意：正常情况下，消费者 sink 应该已经在配置处理时将 EventFD 回退到 UDS
+            // 如果代码执行到这里，说明调用者绕过了 sink 层直接使用 ring buffer
+            // 此时设置 notify_fd 为 -1，通知机制将不可用（使用轮询模式）
+            // 不打印警告，因为这可能是测试代码或有意为之
+            metadata_->notify_fd = -1;
+            notify_fd_ = -1;
 #endif
+        }
         
         // 初始化原子索引为0
         metadata_->write_index.store(0, std::memory_order_relaxed);
@@ -97,8 +123,60 @@ LockFreeRingBuffer::LockFreeRingBuffer(void* memory, size_t total_size, size_t s
             std::memset(slot->logger_name, 0, sizeof(slot->logger_name));
         }
     } else {
-        // 生产者：从元数据读取eventfd/kqueue
-        eventfd_ = metadata_->eventfd;
+        // 生产者：从元数据读取配置
+        notify_mode_ = metadata_->notify_mode;  // 保存通知模式副本
+        
+        if (metadata_->notify_mode == NotifyMode::UDS) {
+            // UDS 模式：连接到消费者的 UDS 服务端
+            std::string path(metadata_->uds_path);
+            if (connect_uds_server(path)) {
+                notify_fd_ = uds_client_fd_;
+            } else {
+                notify_fd_ = -1;
+            }
+        } else {
+            // EventFD/kqueue 模式：从元数据读取 notify_fd
+            notify_fd_ = metadata_->notify_fd;
+        }
+    }
+}
+
+LockFreeRingBuffer::~LockFreeRingBuffer() {
+    // 根据角色（消费者/生产者）和通知模式清理资源
+    // 使用本地保存的 notify_mode_，因为 metadata_ 可能已经无效
+    
+    if (is_consumer_) {
+        // 消费者端清理
+        if (notify_mode_ == NotifyMode::UDS) {
+            // UDS 模式：关闭服务端 socket 并删除 socket 文件
+            if (uds_server_fd_ >= 0) {
+                close(uds_server_fd_);
+                uds_server_fd_ = -1;
+            }
+            // 删除 socket 文件
+            if (!uds_path_.empty()) {
+                unlink(uds_path_.c_str());
+            }
+        } else {
+            // EventFD 模式：关闭 eventfd
+#ifdef __linux__
+            if (notify_fd_ >= 0) {
+                close(notify_fd_);
+                notify_fd_ = -1;
+            }
+#endif
+        }
+    } else {
+        // 生产者端清理
+        if (notify_mode_ == NotifyMode::UDS) {
+            // UDS 模式：关闭客户端 socket
+            if (uds_client_fd_ >= 0) {
+                close(uds_client_fd_);
+                uds_client_fd_ = -1;
+            }
+        }
+        // EventFD 模式：生产者不拥有 eventfd，不需要关闭
+        // （eventfd 由消费者创建和管理）
     }
 }
 
@@ -430,7 +508,7 @@ void LockFreeRingBuffer::release_slot() {
 }
 
 void LockFreeRingBuffer::notify_consumer() {
-    if (eventfd_ < 0) {
+    if (notify_fd_ < 0) {
         return;  // 通知机制不可用
     }
     
@@ -452,22 +530,27 @@ void LockFreeRingBuffer::notify_consumer() {
     }
     
     // 消费者在WAITING状态，或者轮询期已过，发送通知
+    // 根据通知模式选择通知方式
+    if (metadata_->notify_mode == NotifyMode::UDS) {
+        // UDS 模式：通过 UDS socket 发送通知
+        notify_via_uds();
+    } else {
+        // EventFD 模式（仅 Linux 支持）
 #ifdef __linux__
-    // Linux: 写入eventfd
-    uint64_t value = 1;
-    ssize_t ret = write(eventfd_, &value, sizeof(value));
-    (void)ret;  // 忽略返回值
-#elif defined(__APPLE__) || defined(__FreeBSD__)
-    // macOS: 使用kqueue触发事件
-    // 使用用户自定义事件
-    struct kevent kev;
-    EV_SET(&kev, 1, EVFILT_USER, EV_ADD | EV_ENABLE | EV_CLEAR, NOTE_TRIGGER, 0, NULL);
-    kevent(eventfd_, &kev, 1, NULL, 0, NULL);
+        // Linux: 写入eventfd
+        uint64_t value = 1;
+        ssize_t ret = write(notify_fd_, &value, sizeof(value));
+        (void)ret;  // 忽略返回值
+#else
+        // 非 Linux 平台：EventFD 不可用，此代码路径不应被执行
+        // 如果执行到这里，说明配置处理有问题
+        (void)0;  // 空操作
 #endif
+    }
 }
 
 bool LockFreeRingBuffer::wait_for_data(int timeout_ms) {
-    if (eventfd_ < 0) {
+    if (notify_fd_ < 0) {
         // 通知机制不可用，使用简单轮询
         if (is_next_slot_committed()) {
             return true;
@@ -520,10 +603,32 @@ bool LockFreeRingBuffer::wait_for_data(int timeout_ms) {
         return false;
     }
     
+    // 根据通知模式选择等待方式
+    if (metadata_->notify_mode == NotifyMode::UDS) {
+        // UDS 模式：通过 UDS socket 等待通知
+        if (wait_via_uds(timeout_ms)) {
+            // 收到通知，检查是否有数据
+            if (is_next_slot_committed()) {
+                // 有数据，进入轮询状态
+                auto now = std::chrono::steady_clock::now();
+                uint64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    now.time_since_epoch()).count();
+                
+                metadata_->consumer_state.store(static_cast<uint32_t>(ConsumerState::POLLING), 
+                                               std::memory_order_release);
+                metadata_->last_poll_time_ns.store(now_ns, std::memory_order_release);
+                return true;
+            }
+        }
+        // 超时或错误，再次检查是否有数据
+        return is_next_slot_committed();
+    }
+    
+    // EventFD 模式（仅 Linux 支持）
 #ifdef __linux__
     // Linux: 使用poll等待eventfd
     struct pollfd pfd;
-    pfd.fd = eventfd_;
+    pfd.fd = notify_fd_;
     pfd.events = POLLIN;
     pfd.revents = 0;
     
@@ -531,7 +636,7 @@ bool LockFreeRingBuffer::wait_for_data(int timeout_ms) {
     if (ret > 0 && (pfd.revents & POLLIN)) {
         // 读取eventfd以清除通知
         uint64_t value;
-        ssize_t read_ret = read(eventfd_, &value, sizeof(value));
+        ssize_t read_ret = read(notify_fd_, &value, sizeof(value));
         (void)read_ret;
         
         // 收到通知，检查是否有数据
@@ -550,41 +655,9 @@ bool LockFreeRingBuffer::wait_for_data(int timeout_ms) {
     
     // 超时或错误，再次检查是否有数据
     return is_next_slot_committed();
-    
-#elif defined(__APPLE__) || defined(__FreeBSD__)
-    // macOS: 使用kqueue等待事件
-    struct kevent kev;
-    struct timespec ts;
-    ts.tv_sec = timeout_ms / 1000;
-    ts.tv_nsec = (timeout_ms % 1000) * 1000000;
-    
-    // 注册用户事件
-    EV_SET(&kev, 1, EVFILT_USER, EV_ADD | EV_ENABLE | EV_CLEAR, 0, 0, NULL);
-    kevent(eventfd_, &kev, 1, NULL, 0, NULL);
-    
-    // 等待事件
-    struct kevent event;
-    int ret = kevent(eventfd_, NULL, 0, &event, 1, &ts);
-    
-    if (ret > 0) {
-        // 收到通知，检查是否有数据
-        if (is_next_slot_committed()) {
-            // 有数据，进入轮询状态
-            auto now = std::chrono::steady_clock::now();
-            uint64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                now.time_since_epoch()).count();
-            
-            metadata_->consumer_state.store(static_cast<uint32_t>(ConsumerState::POLLING), 
-                                           std::memory_order_release);
-            metadata_->last_poll_time_ns.store(now_ns, std::memory_order_release);
-            return true;
-        }
-    }
-    
-    // 超时或错误，再次检查是否有数据
-    return is_next_slot_committed();
 #else
-    // 其他平台：简单轮询
+    // 非 Linux 平台：EventFD 不可用，此代码路径不应被执行
+    // 如果执行到这里，使用简单轮询作为后备
     std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
     return is_next_slot_committed();
 #endif
@@ -614,6 +687,127 @@ BufferStats LockFreeRingBuffer::get_stats() const {
     stats.dropped_messages = 0;
     
     return stats;
+}
+
+// ============================================================================
+// UDS 通知机制实现
+// ============================================================================
+
+bool LockFreeRingBuffer::init_uds_server(const std::string& path) {
+    // 验证路径长度（sockaddr_un.sun_path 最大 108 字节，包含 null 终止符）
+    if (path.empty() || path.size() >= 108) {
+        return false;
+    }
+    
+    // 创建 SOCK_DGRAM socket（数据报模式，适合简单的通知信号）
+    int fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        return false;
+    }
+    
+    // 删除可能存在的旧 socket 文件
+    unlink(path.c_str());
+    
+    // 设置 socket 地址
+    struct sockaddr_un addr;
+    std::memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+    
+    // 绑定到指定路径
+    if (bind(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
+        close(fd);
+        return false;
+    }
+    
+    // 设置非阻塞模式
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        close(fd);
+        unlink(path.c_str());
+        return false;
+    }
+    
+    // 保存状态
+    uds_server_fd_ = fd;
+    uds_path_ = path;
+    
+    return true;
+}
+
+bool LockFreeRingBuffer::connect_uds_server(const std::string& path) {
+    // 验证路径长度
+    if (path.empty() || path.size() >= 108) {
+        return false;
+    }
+    
+    // 创建 SOCK_DGRAM socket
+    int fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        return false;
+    }
+    
+    // 设置服务端地址
+    struct sockaddr_un addr;
+    std::memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    std::strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+    
+    // 连接到服务端（对于 SOCK_DGRAM，这设置默认目标地址）
+    if (connect(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
+        close(fd);
+        return false;
+    }
+    
+    // 设置非阻塞模式
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        close(fd);
+        return false;
+    }
+    
+    // 保存状态
+    uds_client_fd_ = fd;
+    
+    return true;
+}
+
+void LockFreeRingBuffer::notify_via_uds() {
+    if (uds_client_fd_ < 0) {
+        return;
+    }
+    
+    // 发送单字节通知信号（值为 1）
+    // 根据 Requirements 7.1：通知机制仅传递一个信号字节，不传递实际日志数据
+    uint8_t signal = 1;
+    ssize_t ret = send(uds_client_fd_, &signal, sizeof(signal), MSG_DONTWAIT);
+    (void)ret;  // 忽略返回值（非阻塞模式下可能失败，但不影响正确性）
+}
+
+bool LockFreeRingBuffer::wait_via_uds(int timeout_ms) {
+    if (uds_server_fd_ < 0) {
+        return false;
+    }
+    
+    // 使用 poll() 等待通知
+    struct pollfd pfd;
+    pfd.fd = uds_server_fd_;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+    
+    int ret = poll(&pfd, 1, timeout_ms);
+    
+    if (ret > 0 && (pfd.revents & POLLIN)) {
+        // 读取并丢弃通知信号（清空缓冲区）
+        uint8_t buffer[64];
+        while (recv(uds_server_fd_, buffer, sizeof(buffer), MSG_DONTWAIT) > 0) {
+            // 继续读取直到缓冲区为空
+        }
+        return true;
+    }
+    
+    // 超时或错误
+    return false;
 }
 
 } // namespace spdlog
