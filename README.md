@@ -160,6 +160,7 @@ int main() {
 | 轮询持续时间 (poll_duration) | 1000ms (1秒) |
 | 槽位大小 | 4096字节 |
 | 通知模式 (notify_mode) | UDS (Unix Domain Socket) |
+| 控制台输出 (enable_console) | true（启用） |
 
 **通知模式说明：**
 - `UDS` (默认): Unix Domain Socket，跨平台支持 (macOS/Linux)
@@ -168,6 +169,7 @@ int main() {
 **性能优化说明：**
 - `poll_interval`: 消费者线程检查新消息的间隔
 - `poll_duration`: POLLING 状态持续时间。消费者收到消息后进入 POLLING 状态，在此期间生产者跳过 eventfd/kqueue 通知，减少系统调用开销
+- `enable_console`: 控制台输出开关。性能测试或生产环境中可设为 `false` 禁用控制台输出，仅写入文件，显著提升吞吐量
 
 ## API 参考
 
@@ -187,6 +189,7 @@ cfg.max_file_size = 20 * 1024 * 1024;  // 20MB
 cfg.poll_duration = std::chrono::milliseconds(2000);  // POLLING 状态持续 2 秒
 cfg.poll_interval = std::chrono::milliseconds(10);    // 轮询间隔 10ms
 cfg.notify_mode = spdlog::NotifyMode::UDS;            // 通知模式（默认 UDS）
+cfg.enable_console = false;                           // 禁用控制台输出（性能测试时推荐）
 spdlog::EnableConsumer(cfg);
 ```
 
