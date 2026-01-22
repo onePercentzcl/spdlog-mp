@@ -472,6 +472,7 @@ struct ConsumerConfig {
     // ========== 模式配置 ==========
     bool async_mode = false;                        // 是否使用异步模式
     bool enable_onep_format = false;                // 是否启用OnePet格式（默认false，使用标准格式）
+    bool enable_console = true;                     // 是否启用控制台输出（性能测试时可禁用）
     
     // ========== 通知模式配置 ==========
     NotifyMode notify_mode = NotifyMode::UDS;       // 通知模式（默认 UDS）
@@ -602,7 +603,9 @@ inline std::shared_ptr<multiprocess::SharedMemoryConsumerSink> EnableConsumer(
     
     if (config.enable_onep_format) {
         // OnePet格式
-        output_sinks.push_back(detail::CreateConsumerConsoleSink());
+        if (config.enable_console) {
+            output_sinks.push_back(detail::CreateConsumerConsoleSink());
+        }
         if (config.enable_rotating) {
             output_sinks.push_back(detail::CreateConsumerRotatingFileSink(
                 log_filename, config.max_file_size, config.max_files));
@@ -611,7 +614,9 @@ inline std::shared_ptr<multiprocess::SharedMemoryConsumerSink> EnableConsumer(
         }
     } else {
         // 标准格式
-        output_sinks.push_back(detail::CreateStandardConsoleSink());
+        if (config.enable_console) {
+            output_sinks.push_back(detail::CreateStandardConsoleSink());
+        }
         if (config.enable_rotating) {
             output_sinks.push_back(detail::CreateStandardRotatingFileSink(
                 log_filename, config.max_file_size, config.max_files));

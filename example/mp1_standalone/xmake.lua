@@ -2,7 +2,7 @@
 -- 从远程仓库下载 spdlog-mp 库
 
 set_project("example_mp1")
-set_version("1.0.0")
+set_version("0.0.1")
 
 -- 设置 C++17 标准
 set_languages("cxx17")
@@ -15,7 +15,7 @@ set_defaultmode("release")
 
 -- 添加 spdlog-mp 包（从自定义仓库）
 add_repositories("xmake-repo- https://github.com/onePercentzcl/xmake-repo-")
-add_requires("spdlog-mp v1.0.7", {configs = {enable_multiprocess = true}})
+add_requires("spdlog-mp v0.0.1", {configs = {enable_multiprocess = true}})
 
 -- 消费者程序
 target("example_mp1_consumer")
