@@ -622,6 +622,7 @@ inline std::shared_ptr<multiprocess::SharedMemoryConsumerSink> EnableConsumer(
     consumer_cfg.poll_duration = config.poll_duration;
     consumer_cfg.destroy_on_exit = destroy_on_exit;
     consumer_cfg.enable_onep_format = config.enable_onep_format;
+    consumer_cfg.slot_size = config.slot_size;  // 传递槽位大小
 #ifdef NDEBUG
     consumer_cfg.debug_format = false;  // Release 模式：不显示 PID 和 ThreadID
 #else

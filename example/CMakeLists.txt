@@ -27,34 +27,19 @@ endif()
 # ---------------------------------------------------------------------------------------
 if(SPDLOG_ENABLE_MULTIPROCESS)
     if(UNIX)
-        # Default config example - simplest usage with default configuration
-        add_executable(multiprocess_default_example multiprocess_default_example.cpp)
-        target_link_libraries(multiprocess_default_example PRIVATE spdlog::spdlog)
-        set_target_properties(multiprocess_default_example PROPERTIES
+        # Example MP1 - Non-fork multiprocess with UDS notification
+        # Consumer process (main process)
+        add_executable(example_mp1_consumer example_mp1_consumer.cpp)
+        target_link_libraries(example_mp1_consumer PRIVATE spdlog::spdlog)
+        set_target_properties(example_mp1_consumer PROPERTIES
             CXX_STANDARD 17
             CXX_STANDARD_REQUIRED ON
         )
         
-        # Fork example - demonstrates fork() with multiple child processes
-        add_executable(multiprocess_fork_example multiprocess_fork_example.cpp)
-        target_link_libraries(multiprocess_fork_example PRIVATE spdlog::spdlog)
-        set_target_properties(multiprocess_fork_example PROPERTIES
-            CXX_STANDARD 17
-            CXX_STANDARD_REQUIRED ON
-        )
-        
-        # Separate process example - demonstrates independent processes
-        add_executable(multiprocess_separate_example multiprocess_separate_example.cpp)
-        target_link_libraries(multiprocess_separate_example PRIVATE spdlog::spdlog)
-        set_target_properties(multiprocess_separate_example PROPERTIES
-            CXX_STANDARD 17
-            CXX_STANDARD_REQUIRED ON
-        )
-        
-        # Offset example - demonstrates using a portion of shared memory
-        add_executable(multiprocess_offset_example multiprocess_offset_example.cpp)
-        target_link_libraries(multiprocess_offset_example PRIVATE spdlog::spdlog)
-        set_target_properties(multiprocess_offset_example PROPERTIES
+        # Producer process
+        add_executable(example_mp1_producer example_mp1_producer.cpp)
+        target_link_libraries(example_mp1_producer PRIVATE spdlog::spdlog)
+        set_target_properties(example_mp1_producer PROPERTIES
             CXX_STANDARD 17
             CXX_STANDARD_REQUIRED ON
         )

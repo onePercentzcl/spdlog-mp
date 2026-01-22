@@ -470,30 +470,16 @@ if has_config("build_example") then
     
     -- 多进程示例程序
     if has_config("enable_multiprocess") then
-        target("mp_fork_example")
+        target("example_mp1_consumer")
             set_kind("binary")
-            add_files("example/multiprocess_fork_example.cpp")
+            add_files("example/example_mp1_consumer.cpp")
             add_deps("spdlog")
             add_defines("SPDLOG_ENABLE_MULTIPROCESS")
         target_end()
         
-        target("mp_default_example")
+        target("example_mp1_producer")
             set_kind("binary")
-            add_files("example/multiprocess_default_example.cpp")
-            add_deps("spdlog")
-            add_defines("SPDLOG_ENABLE_MULTIPROCESS")
-        target_end()
-        
-        target("mp_separate_example")
-            set_kind("binary")
-            add_files("example/multiprocess_separate_example.cpp")
-            add_deps("spdlog")
-            add_defines("SPDLOG_ENABLE_MULTIPROCESS")
-        target_end()
-        
-        target("mp_offset_example")
-            set_kind("binary")
-            add_files("example/multiprocess_offset_example.cpp")
+            add_files("example/example_mp1_producer.cpp")
             add_deps("spdlog")
             add_defines("SPDLOG_ENABLE_MULTIPROCESS")
         target_end()

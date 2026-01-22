@@ -56,7 +56,7 @@ SharedMemoryConsumerSink::SharedMemoryConsumerSink(
     ring_buffer_ = spdlog::details::make_unique<LockFreeRingBuffer>(
         effective_ptr, 
         effective_size, 
-        4096,  // 默认槽位大小
+        config_.slot_size,  // 使用配置的槽位大小
         OverflowPolicy::Drop,  // 消费者不关心溢出策略
         true,  // 初始化元数据（消费者负责初始化）
         static_cast<uint64_t>(config_.poll_duration.count()),  // 传递轮询持续时间（毫秒）
@@ -120,6 +120,10 @@ void SharedMemoryConsumerSink::flush_output_sinks() {
 
 // 消费者线程函数
 void SharedMemoryConsumerSink::consumer_thread_func() {
+    // 用于定期 flush 的计数器
+    int flush_counter = 0;
+    const int flush_interval = 100;  // 每 100 次循环 flush 一次（约 1 秒）
+    
     while (running_.load()) {
         // 使用wait_for_data等待新数据，结合短时间轮询
         // 超时时间设置为poll_interval，这样可以定期检查running_标志
@@ -147,6 +151,12 @@ void SharedMemoryConsumerSink::consumer_thread_func() {
             size_t skipped = ring_buffer_->skip_stale_slots();
             (void)skipped;  // 避免未使用警告
         }
+        
+        // 定期 flush 输出 sink，确保日志及时写入文件
+        if (++flush_counter >= flush_interval) {
+            flush_counter = 0;
+            flush_output_sinks();
+        }
     }
     
     // 在退出前处理所有剩余的消息
@@ -156,6 +166,9 @@ void SharedMemoryConsumerSink::consumer_thread_func() {
     
     // 最后一次检查陈旧槽位
     ring_buffer_->skip_stale_slots();
+    
+    // 最终 flush
+    flush_output_sinks();
 }
 
 // 手动轮询一次
@@ -165,8 +178,8 @@ bool SharedMemoryConsumerSink::poll_once() {
         return false;
     }
     
-    // 读取下一个槽位
-    std::vector<char> read_buffer(4096);  // 应该与槽位大小一致
+    // 读取下一个槽位（使用配置的槽位大小）
+    std::vector<char> read_buffer(config_.slot_size);
     auto read_result = ring_buffer_->read_next_slot(read_buffer.data(), read_buffer.size());
     
     if (read_result.is_error()) {
