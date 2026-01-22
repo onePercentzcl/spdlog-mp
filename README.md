@@ -302,25 +302,39 @@ Release控制台：[HH:MM:SS] [LEVEL] [进程名] [模块名] 消息
 
 基于无锁环形缓冲区（MPSC）实现，以下为实际基准测试结果。
 
-### macOS (Apple Silicon M1)
+### 测试环境
 
-测试环境：macOS, Apple M1, 8GB RAM, UDS 通知模式
+| 平台 | 硬件 | 系统 | 内存 |
+|------|------|------|------|
+| macOS | MacBook Pro, Apple M4 Pro | macOS | 48GB |
+| Linux | Orange Pi 5 Plus, RK3588 | Armbian (Ubuntu 24.04) | 16GB |
 
-| 测试场景 | 吞吐量 | 说明 |
-|----------|--------|------|
-| 单线程写入 | **7.7M msg/s** | 100K 消息，100字节/条 |
-| 多线程写入 (4线程) | **2.5M msg/s** | 400K 消息总计 |
-| 多进程写入 (2进程) | **7.1M msg/s** | 200K 消息总计 |
+### 吞吐量对比
 
-### 写入延迟 (macOS)
+| 测试场景 | macOS (UDS) | Linux (UDS) | Linux (EventFD) |
+|----------|-------------|-------------|-----------------|
+| 单线程写入 | **7.7M msg/s** | 2.5M msg/s | 2.0M msg/s |
+| 多线程写入 (4线程) | **2.5M msg/s** | 235K msg/s | - |
+| 多进程写入 (2进程) | **7.1M msg/s** | 1.1M msg/s | 1.3M msg/s |
 
-| 百分位 | 延迟 |
-|--------|------|
-| P50 | 0.21 μs |
-| P90 | 0.54 μs |
-| P99 | 2.83 μs |
-| P99.9 | 5.71 μs |
-| Max | 22.54 μs |
+> 测试条件：100K 消息/生产者，100字节/条，Block 策略（零丢失）
+
+### 写入延迟对比
+
+| 百分位 | macOS (UDS) | Linux (UDS) | Linux (EventFD) |
+|--------|-------------|-------------|-----------------|
+| P50 | **0.21 μs** | 2.92 μs | 2.92 μs |
+| P90 | **0.54 μs** | 5.83 μs | 5.83 μs |
+| P99 | **2.83 μs** | 7.29 μs | 7.00 μs |
+| P99.9 | 5.71 μs | - | - |
+| Max | 22.54 μs | - | - |
+
+### 通知模式说明
+
+| 模式 | 平台支持 | 特点 |
+|------|----------|------|
+| UDS | macOS, Linux | Unix Domain Socket，跨平台，稳定 |
+| EventFD | Linux | Linux 专用，fork 场景下性能更优 |
 
 ### 不同消息长度性能 (macOS)
 
@@ -345,11 +359,12 @@ Release控制台：[HH:MM:SS] [LEVEL] [进程名] [模块名] 消息
 
 ```bash
 # xmake
-xmake f --multiprocess=y
+xmake f --enable_multiprocess=y --build_example=y
 xmake
 xmake run example_mp3           # 完整测试
 xmake run example_mp3 --quick   # 快速测试
 xmake run example_mp3 --integrity  # 消息完整性验证
+xmake run example_mp3 --notify  # 通知模式对比测试（仅Linux）
 
 # cmake
 cmake -B build -DSPDLOG_ENABLE_MULTIPROCESS=ON -DSPDLOG_BUILD_EXAMPLE=ON
@@ -361,7 +376,7 @@ cmake --build build
 
 ```bash
 # xmake
-xmake f --multiprocess=y --build_bench=y
+xmake f --enable_multiprocess=y --build_bench=y
 xmake
 xmake run multiprocess_bench
 
