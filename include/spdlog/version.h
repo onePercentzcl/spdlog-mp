@@ -3,17 +3,17 @@
 
 #pragma once
 
-// spdlog-mp 版本: 1.0.6
+// spdlog-mp 版本: 0.0.2
 // 基于 spdlog v1.17.0
 #define SPDLOG_VER_MAJOR 1
 #define SPDLOG_VER_MINOR 17
 #define SPDLOG_VER_PATCH 0
 
 // spdlog-mp 多进程扩展版本
-#define SPDLOG_MP_VER_MAJOR 1
+#define SPDLOG_MP_VER_MAJOR 0
 #define SPDLOG_MP_VER_MINOR 0
-#define SPDLOG_MP_VER_PATCH 6
-#define SPDLOG_MP_VERSION "1.0.6"
+#define SPDLOG_MP_VER_PATCH 2
+#define SPDLOG_MP_VERSION "0.0.2"
 
 #define SPDLOG_TO_VERSION(major, minor, patch) (major * 10000 + minor * 100 + patch)
 #define SPDLOG_VERSION SPDLOG_TO_VERSION(SPDLOG_VER_MAJOR, SPDLOG_VER_MINOR, SPDLOG_VER_PATCH)

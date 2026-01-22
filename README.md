@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://isocpp.org/std/the-standard)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)]()
-[![Version](https://img.shields.io/badge/version-1.0.6-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-0.0.2-blue.svg)]()
 
 基于 [spdlog](https://github.com/gabime/spdlog) 的多进程共享内存日志扩展。
 
