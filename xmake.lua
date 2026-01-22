@@ -497,6 +497,13 @@ if has_config("build_example") then
             add_deps("spdlog")
             add_defines("SPDLOG_ENABLE_MULTIPROCESS")
         target_end()
+        
+        target("example_mp4")
+            set_kind("binary")
+            add_files("example/example_mp4.cpp")
+            add_deps("spdlog")
+            add_defines("SPDLOG_ENABLE_MULTIPROCESS")
+        target_end()
     end
 end
 

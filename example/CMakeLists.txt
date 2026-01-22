@@ -51,5 +51,13 @@ if(SPDLOG_ENABLE_MULTIPROCESS)
             CXX_STANDARD 17
             CXX_STANDARD_REQUIRED ON
         )
+        
+        # Example MP4 - Extreme stress test for drop rate analysis
+        add_executable(example_mp4 example_mp4.cpp)
+        target_link_libraries(example_mp4 PRIVATE spdlog::spdlog)
+        set_target_properties(example_mp4 PROPERTIES
+            CXX_STANDARD 17
+            CXX_STANDARD_REQUIRED ON
+        )
     endif()
 endif()
