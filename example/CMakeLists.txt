@@ -43,5 +43,13 @@ if(SPDLOG_ENABLE_MULTIPROCESS)
             CXX_STANDARD 17
             CXX_STANDARD_REQUIRED ON
         )
+        
+        # Example MP2 - Fork multiprocess with EventFD notification
+        add_executable(example_mp2 example_mp2.cpp)
+        target_link_libraries(example_mp2 PRIVATE spdlog::spdlog)
+        set_target_properties(example_mp2 PROPERTIES
+            CXX_STANDARD 17
+            CXX_STANDARD_REQUIRED ON
+        )
     endif()
 endif()

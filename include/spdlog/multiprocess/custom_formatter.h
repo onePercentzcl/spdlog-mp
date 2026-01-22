@@ -34,6 +34,7 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/rotating_file_sink.h>
+#include <spdlog/sinks/null_sink.h>
 
 #include <string>
 #include <mutex>
@@ -697,6 +698,13 @@ inline bool EnableProducer(const ProducerConfig& config = ProducerConfig()) {
     if (is_forked) {
         // fork 子进程：清空继承的状态，但不调用析构函数
         state.consumer_sink.reset();
+        
+        // 重要：先清空 default logger，避免继承的 async_logger 持有无效线程池引用
+        // 使用 drop_all() 会触发析构，可能导致问题，所以直接设置一个临时的同步 logger
+        auto null_sink = std::make_shared<sinks::null_sink_mt>();
+        auto temp_logger = std::make_shared<logger>("temp", null_sink);
+        set_default_logger(temp_logger);
+        
         // 重置线程池指针（不 join，因为线程在父进程中）
         details::registry::instance().set_tp(nullptr);
     }

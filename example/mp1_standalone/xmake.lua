@@ -1,0 +1,34 @@
+-- xmake.lua for spdlog-mp example_mp1
+-- 从远程仓库下载 spdlog-mp 库
+
+set_project("example_mp1")
+set_version("1.0.0")
+
+-- 设置 C++17 标准
+set_languages("cxx17")
+
+-- 配置编译模式
+add_rules("mode.debug", "mode.release")
+
+-- 设置默认为 release 模式
+set_defaultmode("release")
+
+-- 添加 spdlog-mp 包（从自定义仓库）
+add_repositories("xmake-repo- https://github.com/onePercentzcl/xmake-repo-")
+add_requires("spdlog-mp v1.0.7", {configs = {enable_multiprocess = true}})
+
+-- 消费者程序
+target("example_mp1_consumer")
+    set_kind("binary")
+    add_files("example_mp1_consumer.cpp")
+    add_packages("spdlog-mp")
+    add_syslinks("pthread", "rt")
+target_end()
+
+-- 生产者程序
+target("example_mp1_producer")
+    set_kind("binary")
+    add_files("example_mp1_producer.cpp")
+    add_packages("spdlog-mp")
+    add_syslinks("pthread", "rt")
+target_end()
