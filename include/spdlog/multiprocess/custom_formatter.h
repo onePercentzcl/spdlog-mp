@@ -705,8 +705,11 @@ inline bool EnableProducer(const ProducerConfig& config = ProducerConfig()) {
     bool is_forked = state.is_forked_child();
     
     if (is_forked) {
-        // fork 子进程：清空继承的状态，但不调用析构函数
-        state.consumer_sink.reset();
+        // fork 子进程：清空继承的状态
+        // 重要：不能调用 consumer_sink.reset()，因为会触发析构函数尝试 join 不存在的线程
+        // 直接将 shared_ptr 置为 nullptr，让它在子进程中泄漏（反正子进程会 _exit）
+        // 使用 placement new 技巧避免析构
+        new (&state.consumer_sink) std::shared_ptr<multiprocess::SharedMemoryConsumerSink>();
         
         // 重要：先清空 default logger，避免继承的 async_logger 持有无效线程池引用
         // 使用 drop_all() 会触发析构，可能导致问题，所以直接设置一个临时的同步 logger
